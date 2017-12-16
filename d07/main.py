@@ -2,26 +2,27 @@ import os
 import re
 import textwrap
 
+from pprint import pformat, pprint as pp
+
 class Tower:
 
     def __init__(self):
         self.bottom = None
+        self.tower = None
+        self.weights = None
 
     def parse(self, inputstr):
-        tower = {}
-        weights = {}
+        self.tower = {}
+        self.weights = {}
         line_re = re.compile("(?P<name>[a-z]+) \((?P<weight>\d+)\)(?: \-> )?(?P<holding>.*)")
         for line in inputstr.splitlines():
             match = line_re.match(line)
             groups = match.groups()
             name, weight, holding = groups
-            weight = int(weight)
+            self.weights[name] = int(weight)
             if holding:
                 holding = holding.split(", ")
-                tower[name] = holding
-            weights[name] = weight
-        self.tower = tower
-        self.weights = weights
+                self.tower[name] = holding
         self.bottom = self._find_bottom()
 
     def _find_bottom(self):
@@ -38,39 +39,43 @@ class Tower:
             if name == self.bottom:
                 continue
             weight = self.weights[name]
-            total = sum(self.get_program_weights(name))
-            yield (name, weight, total)
+            subweight = sum(self.get_program_weights(name))
+            yield (name, weight, subweight)
+
+    def get_program_weights(self, start):
+        if start not in self.tower:
+            return
+        for holding in self.tower[start]:
+            yield self.weights[holding]
+            if holding in self.tower:
+                yield from self.get_program_weights(holding)
 
     def find_balanced_weight(self):
         totals = {}
-        for name, weight, total in self._iter_weighted():
+        for name, weight, subweight in self._iter_weighted():
+            total = weight + subweight
             if total not in totals:
                 totals[total] = 0
             totals[total] += 1
-        assert len(totals) == 2, totals
+        assert len(totals) == 2, pformat(totals)
         for total, count in totals.items():
             if count > 1:
                 return total
 
-    def get_program_weights(self, start):
-        # left off here, want this to yield "flat"
-        yield self.weights[start]
-        if start in self.tower:
-            for holding in self.tower[start]:
-                yield self.weights[holding]
-                if holding in self.tower and self.tower[holding]:
-                    for weight in self.get_program_weights(holding):
-                        yield weight
+    def find_wrong_weight(self, root):
+        for child in self.tower[root]:
+            if child in self.tower:
+                self.find_wrong_weight(child)
+            else:
+                print(child)
+                subweights = list(self.get_program_weights(child))
+                if len(set(subweights)) > 1:
+                    print(subweights)
 
     def find_corrected_weight(self):
         balanced_weight = self.find_balanced_weight()
-        for name, weight, total in self._iter_weighted():
+        for name, weight, subweight in self._iter_weighted():
             holding = self.tower[name]
-            if holding:
-                print("holding: %s" % (holding, ))
-                subweight = sum(sum(self.get_program_weights(name)) for name in holding)
-            else:
-                subweight = 0
             total = weight + subweight
 
             if total != balanced_weight:
@@ -97,7 +102,7 @@ def tests():
     assert tower.bottom == "tknk"
     assert tower.find_corrected_weight() == 60
 
-    # test with recursive
+    # test with recursion
     inputstr = "".join(textwrap.dedent("""\
                 pbga (66)
                 xhth (57)
@@ -105,31 +110,18 @@ def tests():
                 havc (66)
                 ktlj (57) -> qoyq
                 fwft (72) -> ktlj, cntj, xhth
-                qoyq (66)
+                qoyq (66) -> ebii
                 padx (45) -> pbga, havc, qoyq
                 tknk (41) -> ugml, padx, fwft
                 jptl (61)
                 ugml (68) -> gyxo, ebii, jptl
                 gyxo (61)
                 cntj (57)"""))
-    # fwft (72) + ktlj (57) + qoyq (66) + cntj (57) + xhth (57) == 309
-
-    print("\n\n\n")
+    # fwft (72) + [ktlj (57) + [qoyq (66) + ebii (61)]] + cntj (57) + xhth (57) == 370
     tower = Tower()
     tower.parse(inputstr)
-    for name in tower.tower:
-        if name == tower.bottom:
-            continue
-        weight = tower.weights[name]
-        print("name: %s" % name)
-        holding = tower.tower[name]
-        if holding:
-            subweights = [list(tower.get_program_weights(name)) for name in holding]
-            print("subweights: %s" % (",".join(map(str, subweights))))
-        else:
-            subweights = []
-        print("%s sum: %s" % (name, weight + sum()))
-        print()
+    name = "fwft"
+    assert tower.weights[name] + sum(tower.get_program_weights(name)) == 370
 
 def main():
     tests()
@@ -139,6 +131,8 @@ def main():
     tower.parse(open(input_path).read())
 
     print("part 1: %s" % tower.bottom)
+
+    tower.find_wrong_weight(tower.bottom)
     #print("part 2: %s" % tower.find_corrected_weight())
 
 if __name__ == "__main__":
