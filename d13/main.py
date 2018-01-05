@@ -8,104 +8,52 @@ TEST = """\
 
 TOP = 0
 
-class Layer:
+def parse(inputstr):
+    layers = []
+    for line in inputstr.splitlines():
+        depth, range_ = map(int, line.split(": "))
+        while len(layers) < depth:
+            layers.append(0)
+        layers.append(range_)
+    return layers
 
-    def __init__(self, depth, range_):
-        self.depth = depth
-        self.range_ = range_
-        self.scanner = TOP
-        self.delta = 1
+def scanner_position(range_, second):
+    amplitude = range_ - 1
+    return abs(((second + amplitude) % (amplitude * 2)) - amplitude)
 
-    def __repr__(self):
-        return "<Layer(%s, %s, %s)>" % (self.depth, self.range_, self.scanner)
+def severity(layers):
+    damage = 0
+    for second in range(len(layers)):
+        range_ = layers[second]
+        if range_ > 0:
+            sp = scanner_position(range_, second)
+            hit = sp == TOP
+            if hit:
+                depth = second
+                damage += depth * range_
+    return damage
 
-    def step(self):
-        next_ = self.scanner + self.delta
-        if next_ >= self.range_ or next_ < 0:
-            self.delta *= -1
-        self.scanner += self.delta
-
-    def render(self, at_range):
-        value = "   "
-        if self.range_ == 0:
-            if at_range == 0:
-                value = "..."
-        elif self.range_ > at_range:
-            if self.scanner == at_range:
-                value = "[S]"
-            else:
-                value = "[ ]"
-        return value
-
-
-class Firewall:
-
-    def __init__(self, inputstr):
-        self.state = self.parse(inputstr)
-
-    def parse(self, inputstr):
-        state = {}
-        self.packet = None
-        self._maxrange = 0
-        for layer, line in enumerate(inputstr.splitlines()):
-            depth, range_ = map(int, line.split(": "))
-            state[depth] = Layer(depth, range_)
-            if range_ > self._maxrange:
-                self._maxrange = range_
-
-        for layer in range(min(state), max(state)):
-            if layer not in state:
-                state[layer] = Layer(layer, 0)
-        return state
-
-    def step(self):
-        self.step_packet()
-        self.step_layers()
-
-    def step_layers(self):
-        for layer in self.state.values():
-            layer.step()
-
-    def step_packet(self):
-        if self.packet is None:
-            self.packet = 0
-        else:
-            self.packet += 1
-
-    def is_caught(self):
-        layer = self.state[self.packet]
-        return layer.scanner == TOP
-
-    def severity(self):
-        caught = 0
-        for _ in range(len(self.state)):
-            self.step_packet()
-            if self.is_caught():
-                layer = self.state[self.packet]
-                caught += layer.depth * layer.range_
-            self.step_layers()
-        return caught
-
-    def render(self):
-        lines = []
-        names = sorted(self.state)
-        lines.append(" ".join("{:^3}".format(name) for name in names))
-
-        for range_ in range(self._maxrange):
-            strs = []
-            for name in names:
-                layer = self.state[name]
-                s = layer.render(range_)
-                if range_ == 0 and self.packet == name:
-                    s = "(%s)" % s[1]
-                strs.append(s)
-            lines.append(" ".join(strs))
-        return "\n".join(lines)
-
+def fewest_delays(layers):
+    delay = 0
+    nlayers = len(layers)
+    while True:
+        packet = 0
+        second = delay
+        while True:
+            range_ = layers[packet]
+            sp = scanner_position(range_, second)
+            if range_ > 0 and sp == TOP:
+                break
+            packet += 1
+            second += 1
+            if packet == nlayers:
+                return delay
+        delay += 1
 
 def tests():
-    firewall = Firewall(TEST)
-    assert firewall.severity() == 24
+    layers = parse(TEST)
+    assert severity(layers) == 24
+    assert fewest_delays(layers) == 10
 
 def get_input():
     return open(os.path.join(os.path.dirname(__file__), "input.txt")).read().strip()
@@ -113,8 +61,14 @@ def get_input():
 def main():
     tests()
 
-    firewall = Firewall(get_input())
-    print("part 1: %s" % (firewall.severity(), ))
+    layers = parse(get_input())
+    solution = severity(layers)
+    assert solution == 1476
+    print("part 1: %s" % (solution, ))
+
+    solution = fewest_delays(layers)
+    assert solution == 3937334
+    print("part 2: %s" % (solution, ))
 
 if __name__ == "__main__":
     main()
